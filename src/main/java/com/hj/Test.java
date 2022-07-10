@@ -16,6 +16,6 @@ public class Test {
         Object userService = hjApplicationContext.getBean("userService");//通过类拿到bean的名字
 //        System.out.println(userService);
 //        Object userService1 = hjApplicationContext.getBean("userService");
-//        System.out.println(userService1); 
+//        System.out.println(userService1);
     }
 }
