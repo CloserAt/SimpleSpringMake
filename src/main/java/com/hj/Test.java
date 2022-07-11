@@ -1,10 +1,12 @@
 package com.hj;
 
+import com.hj.service.UserService;
+import com.hj.service.UserServiceImpl;
 import com.spring.HjApplicationContext;
 
 public class Test {
     public static void main(String[] args) {
-        HjApplicationContext hjApplicationContext = new HjApplicationContext(AppConfig.class);//此处的传入参数是当前用户需要向spring传入的配置文件
+        HjApplicationContext HjApplicationContext = new HjApplicationContext(AppConfig.class);//此处的传入参数是当前用户需要向spring传入的配置文件
 
         /*
         单例Bean和原型Bean的区别：
@@ -13,9 +15,11 @@ public class Test {
         实现原理：
             单例Bean实现原理：底层使用map<beanName,bean对象> 同一个beanName获得同一个bean对象 -即单例池
          */
-        Object userService = hjApplicationContext.getBean("userService");//通过类拿到bean的名字
+        //Object userService = HjApplicationContext.getBean("userService");//通过类拿到bean的名字
 //        System.out.println(userService);
-//        Object userService1 = hjApplicationContext.getBean("userService");
+//        Object userService1 = HjApplicationContext.getBean("userService");
 //        System.out.println(userService1);
+        UserService userService = (UserService) HjApplicationContext.getBean("userService");
+        userService.test();
     }
 }

@@ -2,10 +2,14 @@ package com.spring;
 
 import java.io.File;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class HjApplicationContext {
 
@@ -13,7 +17,7 @@ public class HjApplicationContext {
 
     private ConcurrentHashMap<String,Object> singletonObjects = new ConcurrentHashMap<>();//单例池
     private ConcurrentHashMap<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>(); //存整个系统一开始扫描到的所有Bean和它的的定义
-
+    private List<BeanPostProcessor> beanPostProcessorList = new ArrayList<>();
 
     //构造一个spring容器，传入配置类
     public HjApplicationContext(Class configClass) {
@@ -27,16 +31,51 @@ public class HjApplicationContext {
             String beanName = entry.getKey();
             BeanDefinition beanDefinition = entry.getValue();
             if (beanDefinition.getScope().equals("singleton")) {
-                Object bean = createBean(beanDefinition);//创建得到单例bean对象
+                Object bean = createBean(beanName,beanDefinition);//创建得到单例bean对象
                 singletonObjects.put(beanName, bean);
             }
         }
     }
 
-    private Object createBean(BeanDefinition beanDefinition) {
+    private Object createBean(String beanName, BeanDefinition beanDefinition) {
         Class clazz = beanDefinition.getClazz();
         try {
             Object instance = clazz.getDeclaredConstructor().newInstance();
+
+            //此时实例化出来的对象，就需要spring来对这个对象内部的属性进行赋值-依赖注入
+            for (Field declaredField : clazz.getDeclaredFields()) {
+                if (declaredField.isAnnotationPresent(Autowired.class)) {
+                    Object bean = getBean(declaredField.getName());
+                    declaredField.setAccessible(true);
+                    declaredField.set(instance, bean);//spring给实例化属性赋值的前提，是需要从容器中获取到这个对象
+                }
+            }
+
+            //Aware回调
+            //判断当前这个实例化对象是不是实现了这个接口
+            if (instance instanceof BeanNameAware) {
+                ((BeanNameAware) instance).setBeanName(beanName);
+            }
+
+            for (BeanPostProcessor beanPostProcessor : beanPostProcessorList) {
+                instance = beanPostProcessor.postProcessorBeforeInitialization(instance, beanName);
+            }
+
+            //初始化
+            if (instance instanceof InitializingBean) {
+                try {
+                    ((InitializingBean) instance).afterPropertiesSet();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+
+            for (BeanPostProcessor beanPostProcessor : beanPostProcessorList) {
+                instance = beanPostProcessor.postProcessorAfterInitialization(instance, beanName);
+            }
+
+
+
             return instance;
         } catch (InstantiationException e) {
             e.printStackTrace();
@@ -47,6 +86,7 @@ public class HjApplicationContext {
         } catch (NoSuchMethodException e) {
             e.printStackTrace();
         }
+
         return null;
     }
 
@@ -81,6 +121,15 @@ public class HjApplicationContext {
                     try {
                         Class<?> clazz = classLoader.loadClass(className);
                         if (clazz.isAnnotationPresent(Component.class)) {
+
+                            //BeanPostProcessor
+                            //判断当前clazz对象是否实现BeanPostProcessor接口的方法如下
+                            if (BeanPostProcessor.class.isAssignableFrom(clazz)) {
+                                BeanPostProcessor instance = (BeanPostProcessor) clazz.getDeclaredConstructor().newInstance();
+                                beanPostProcessorList.add(instance);
+                            }
+
+
                             //如果有Component注解,表示当前类是一个Bean
                             //如果当前类是一个Bean，就需要创建这个Bean对象么?-首先需要判断当前这个Bean是单例还是原型
                             //判断依据就是根据BeanDefinition(在解析过程中创建的)
@@ -99,7 +148,13 @@ public class HjApplicationContext {
                             beanDefinitionMap.put(beanNameValue, beanDefinition);
 
                         }
-                    } catch (ClassNotFoundException e) {
+                    } catch (ClassNotFoundException | NoSuchMethodException e) {
+                        e.printStackTrace();
+                    } catch (InvocationTargetException e) {
+                        e.printStackTrace();
+                    } catch (InstantiationException e) {
+                        e.printStackTrace();
+                    } catch (IllegalAccessException e) {
                         e.printStackTrace();
                     }
                 }
@@ -117,7 +172,7 @@ public class HjApplicationContext {
                 return o;
             } else {
                 //反之是一个原型bean，则创建bean对象
-                Object bean = createBean(beanDefinition);
+                Object bean = createBean(beanName,beanDefinition);
                 return bean;
             }
         } else {
